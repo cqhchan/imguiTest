@@ -1,7 +1,7 @@
 #include <SDL.h>
 #include "imgui.h"
 #include <string>
-
+#include "math.h"
 #include "logger.h"
 
 #ifdef __ANDROID__
@@ -36,6 +36,8 @@ static shutdown_t *shutdown;
 
 static int historySize = 0;
 static std::string result[100];
+static bool scrollToBottom = false;
+static bool scrollToBottomDouble = false;
 
 static std::string equation[100];
 
@@ -44,8 +46,18 @@ static std::string currentResult = "";
 
 static void addStrToEquation(std::string toAdd){
 
+    if (!currentResult.empty()){
+        equation[historySize] = currentEquation;
+        currentEquation = "";
+        result[historySize] = currentResult;
+        currentResult = "";
+        historySize++;
+
+    }
 
     currentEquation += toAdd;
+    scrollToBottom = true;
+
 }
 
 
@@ -177,6 +189,8 @@ int main(int argc, char** argv)
 
     ImVec4 clear_color = ImColor(114, 144, 154);
     ImVec4 white = ImColor(255, 255, 255);
+    ImVec4 black = ImColor(0, 0, 0);
+
     ImVec4 darkRed = ImColor(0, 128, 0);
 
     Log(LOG_INFO) << "Entering main loop";
@@ -185,6 +199,10 @@ int main(int argc, char** argv)
         bool done = false;
 
         int deltaX = 0, deltaY = 0;
+
+        int sizeY = 0, sizeX = 0;
+
+
         int prevX , prevY;
         SDL_GetMouseState(&prevX, &prevY);
 
@@ -195,7 +213,8 @@ int main(int argc, char** argv)
             deltaX = 0;
             deltaY = 0;
 
-
+            sizeY = (int) ImGui::GetIO().DisplaySize.y - 100;
+            sizeX = (int) ImGui::GetIO().DisplaySize.x - 50;
 
             while (SDL_PollEvent(&e)) {
                 bool handledByImGui = processEvent(&e);
@@ -237,40 +256,45 @@ int main(int argc, char** argv)
 
             {
 
-                ImGui::Begin("History");
-                ImGui::SetWindowPos(ImVec2(0, 0), ImGuiSetCond_Always);
-                ImGui::SetWindowCollapsed(false, ImGuiSetCond_Always);
+                ImGui::PushStyleColor(ImGuiCol_WindowBg, white);
+                ImGui::Begin("History",&done,ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoResize);
+                ImGui::SetWindowPos(ImVec2(0, fmax((sizeY/2 -
+                                                   (ImGui::GetItemsLineHeightWithSpacing
+                                                                    () + 10)*2*(2 + historySize*2)
+                                                    + 30), 0.0f)),
+                                    ImGuiSetCond_Always|ImGuiWindowFlags_NoResize);
+                ImGui::SetWindowCollapsed(false, ImGuiSetCond_Always|ImGuiWindowFlags_NoResize);
                 ImGui::SetWindowSize(ImVec2((int) ImGui::GetIO()
-                        .DisplaySize.x, (int) ImGui::GetIO()
-                        .DisplaySize.y - 150*7), ImGuiSetCond_Always);
-                ImGui::BeginChild("scrolling", ImVec2(0, -ImGui::GetItemsLineHeightWithSpacing())
-                        , true,
-                                  ImGuiWindowFlags_AlwaysVerticalScrollbar);
-
+                        .DisplaySize.x, fmin((ImGui::GetItemsLineHeightWithSpacing() + 10)*2*(2 +
+                                             historySize*2)+ 30, (float)sizeY/2)),
+                                     ImGuiSetCond_Always|ImGuiWindowFlags_NoResize);
+                ImGui::PushStyleColor(ImGuiCol_ChildWindowBg, white);
+                ImGui::BeginChild("scrolling", ImVec2(0, 0)
+                        , true,ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoResize);
                 ImGui::SetWindowFontScale(3);
-                ImGui::SetWindowPos(ImVec2(0, 50), ImGuiSetCond_Always);
-                ImGui::SetWindowCollapsed(false, ImGuiSetCond_Always);
-                ImGui::SetWindowSize(ImVec2((int) ImGui::GetIO()
-                        .DisplaySize.x, (int) ImGui::GetIO()
-                        .DisplaySize.y - 150*7), ImGuiSetCond_Always);
+
+
 
 
                 if ((deltaY != 0)){
 
-                    Log(LOG_INFO) << "Got moved: " << deltaY;
                     ImGui::SetScrollY(ImGui::GetScrollY() + deltaY);
 
 
                 }
 
 
+                if ((deltaX != 0)){
 
-                const char* cstr = &currentEquation[0u];
-                ImGui::Text("%s", cstr);
-                const char* resultStr = &currentResult[0u];
-                ImGui::Text("%s", resultStr);
+                    ImGui::SetScrollX(ImGui::GetScrollX() + deltaX);
 
-                for (int i = historySize -1 ; i >= 0 ; i--){
+
+                }
+
+
+
+
+                for (int i = 0 ; i < historySize ; i++){
 
                     if (equation[i].empty()) {
 
@@ -286,140 +310,183 @@ int main(int argc, char** argv)
                     const char* tempResult = &result[i][0u];
 
 
-                    ImGui::TextColored(white, "%s", tempEquation);
+
+                    ImGui::Indent( sizeX - ImGui::CalcTextSize(tempEquation).x);
+                    ImGui::TextColored(black, "%s", tempEquation);
+                    ImGui::Unindent( sizeX - ImGui::CalcTextSize(tempEquation).x);
+
+                    ImGui::Indent( sizeX - ImGui::CalcTextSize(tempResult).x);
                     ImGui::TextColored(darkRed, "%s", tempResult);
+                    ImGui::Unindent( sizeX - ImGui::CalcTextSize(tempResult).x);
+
 
 
                 }
+
+
+                const char* cstr = &currentEquation[0u];
+
+                ImGui::Indent( sizeX - ImGui::CalcTextSize(cstr).x);
+
+                ImGui::TextColored(black,"%s", cstr);
+
+
+
+                ImGui::Unindent( sizeX - ImGui::CalcTextSize(cstr).x);
+
+                const char* resultStr = &currentResult[0u];
+
+                ImGui::Indent( sizeX - ImGui::CalcTextSize(resultStr).x);
+
+                ImGui::TextColored(darkRed,"%s", resultStr);
+                ImGui::Unindent( sizeX - ImGui::CalcTextSize(resultStr).x);
+
+
+                if (scrollToBottom){
+
+                    ImGui::SetScrollY(ImGui::GetScrollMaxY());
+                    if (scrollToBottomDouble){
+                        scrollToBottomDouble = false;
+                        scrollToBottom = false;
+
+                    } else {
+                        scrollToBottomDouble = true;
+
+                    }
+                }
+
+
+
+
                 ImGui::EndChild();
+                ImGui::PopStyleColor();
 
                 ImGui::End();
+                ImGui::PopStyleColor();
 
-                ImGui::Begin("Calculator");
-                ImGui::SetWindowFontScale(3);
+                ImGui::Begin("Calculator", &done,ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoResize);
+                ImGui::SetWindowFontScale(2);
                 ImGui::SetWindowPos(ImVec2(0, (int) ImGui::GetIO()
-                        .DisplaySize.y - 150*7), ImGuiSetCond_Always);
+                        .DisplaySize.y/2), ImGuiSetCond_Always);
                 ImGui::SetWindowCollapsed(false, ImGuiSetCond_Always);
                 ImGui::SetWindowSize(ImVec2((int) ImGui::GetIO()
-                        .DisplaySize.x, 150*7), ImGuiSetCond_Always);
+                        .DisplaySize.x, (int) ImGui::GetIO()
+                        .DisplaySize.y/2), ImGuiSetCond_Always|ImGuiWindowFlags_NoResize);
 
                 if(ImGui::Button("sin",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12 ))){
                     addStrToEquation("sin");
                 }; ImGui::SameLine();
 
                 if(ImGui::Button("cos",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("cos");
                 }; ImGui::SameLine();
 
                 if(ImGui::Button("tan",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("tan");
                 }; ImGui::SameLine();
 
                 if(ImGui::Button("del",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     currentEquation.pop_back();
                 }; ImGui::SameLine();
 
                 ImGui::NewLine();
 
                 if(ImGui::Button("c",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     currentEquation = "";
                 }; ImGui::SameLine();
                 ImGui::Button("(",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 )); ImGui::SameLine();
+                        .DisplaySize.x/4 , sizeY/12  )); ImGui::SameLine();
                 ImGui::Button(")",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 )); ImGui::SameLine();
+                        .DisplaySize.x/4 , sizeY/12  )); ImGui::SameLine();
                 if(ImGui::Button("/",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("/");
                 };ImGui::SameLine();
 
                 ImGui::NewLine();
 
                 if(ImGui::Button("7",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("7");
                 };
                 ImGui::SameLine();
                 if (ImGui::Button("8",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("8");
                 }; ImGui::SameLine();
                 if (ImGui::Button("9",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("9");
                 }; ImGui::SameLine();
                 if (ImGui::Button("X",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("X");
                 }; ImGui::SameLine();
 
                 ImGui::NewLine();
 
                 if(ImGui::Button("4",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("4");
                 };
                 ImGui::SameLine();
                 if (ImGui::Button("5",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("5");
                 }; ImGui::SameLine();
                 if (ImGui::Button("6",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("6");
                 }; ImGui::SameLine();
                 if (ImGui::Button("-",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("-");
                 }; ImGui::SameLine();
                 ImGui::NewLine();
 
                 if(ImGui::Button("1",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("1");
                 };
                 ImGui::SameLine();
                 if (ImGui::Button("2",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("2");
                 }; ImGui::SameLine();
                 if (ImGui::Button("3",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("3");
                 }; ImGui::SameLine();
                 if (ImGui::Button("+",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation("+");
                 }; ImGui::SameLine();
 
                 ImGui::NewLine();
 
                 if (ImGui::Button("0",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/2 , 150 ))){
+                        .DisplaySize.x/2 , sizeY/12  ))){
                     addStrToEquation("0");
                 }; ImGui::SameLine();
                 if (ImGui::Button(".",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
                     addStrToEquation(".");
                 }; ImGui::SameLine();
                 if (ImGui::Button("=",ImVec2( (int) ImGui::GetIO()
-                        .DisplaySize.x/4 , 150 ))){
+                        .DisplaySize.x/4 , sizeY/12  ))){
 
-                    std::ostringstream strs;
-                    strs << calculator::calEverything(currentEquation);
-                    currentResult = strs.str();
+                    if (!currentEquation.empty()){
+                        scrollToBottom = true;
+                        std::ostringstream strs;
+                        strs << calculator::calEverything(currentEquation);
+                        currentResult = strs.str();
 
-                    equation[historySize] = currentEquation;
-                    currentEquation = "";
-                    result[historySize] = currentResult;
-                    currentResult = "";
-                    historySize++;
-
+                    }
 
                 }; ImGui::SameLine();
 
